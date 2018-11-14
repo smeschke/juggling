@@ -12,26 +12,30 @@ color_values = 100,60,50,170,255,185 #pink
 color_values = 142,106,43,159,255,146
 color_values = 120,113,60,167,255,255
 color_values = 120,110,0,193,255,255
+#color_values = 128,127,24,169,241,255
 threshold_value = 0
 
 # When does the tracker need to be reset?
 # There is a maximum distance that the ball can travel between seccessive frames.
 # If the detected location in the next frame is greater than the max distance,
 # the tracker must have gotten lost.
-max_distance = 32
+max_distance = 35
 
 # how big is a ball? This will affect snapping
-ball_size = 11
-contour_ball_size = 11
+#13 is good
+ball_size = 15
+contour_ball_size = 30
 
 # how far can the snap be applied?
 global max_snap_distance
 max_snap_distance = 9
 
 
-output_path = '/home/stephen/Desktop/6.csv'
+output_path = '/home/stephen/Desktop/data/5.csv'
 
-cap = cv2.VideoCapture('/home/stephen/Desktop/ss6async_id_109.MP4')
+cap = cv2.VideoCapture('/home/stephen/Desktop/trick_1up4up_id_150.MP4')
+
+p_imgs, history_length, history_idx = [], 80, 0
 
 #takes an image, and a lower and upper bound
 #returns only the parts of the image in bounds
@@ -131,8 +135,8 @@ screen_factor = 1
 #get a bigger monitor
 
 #define the size of the roi
-roi_size = 200
-roi_factor = 4 #makes the roi easier to see
+roi_size = 800
+roi_factor = 1 #makes the roi easier to see
 
 #create a value for the tracker to track
 #this will be reset by the user after the frist frame
@@ -143,7 +147,12 @@ p0 = np.array([[[0,0]]], np.float32)
 #main loop
 while True:
     #read frame of video
-    _, img = cap.read()
+    if history_idx == 0:
+        _, img = cap.read()
+        p_imgs.append(img)
+    else:
+        img = p_imgs.pop(0)
+        history_idx -= 1
     try:h,w,e = img.shape
     except: break
     img = cv2.resize(img, (int(w*screen_factor), int(h*screen_factor)))
@@ -210,7 +219,7 @@ while True:
     k = cv2.waitKey(wait_time)
     if k ==27: break
     if k == 195: wait_time = 0
-    if k == 196: wait_time = 50
+    if k == 196: wait_time = 25
     if k == 197: wait_time = 1
     #if the user has presses 's', resset the tracking location
     if k == 194: #F5
@@ -226,6 +235,13 @@ while True:
 
     #add tracked location to data
     positions.append((int(xy[0]/screen_factor),int(xy[1]/screen_factor)))
+
+    
+    if len(p_imgs)>history_length: p_imgs.pop(0)
+    if k < 194 and k >10:
+        wait_time = 0
+        history_idx = history_length
+        positions = positions[:-history_length]
 
 cv2.destroyAllWindows()
 cap.release()
