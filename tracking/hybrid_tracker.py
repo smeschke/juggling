@@ -1,43 +1,26 @@
 import cv2, math, numpy as np
-
 # --------------------- START PARAMETERS -----------------------
-# h,s,v range of the object to be tracked
-#color_values = 100,60,50,170,255,185 #pink
-#color_values = 19,37,151,50,206,255 # yellow
-#color_values = 105,130,0,130,228,128 #blue
-#color_values = 50,38,101,83,204,255 #green
-color_values = 120,110,0,193,255,255 #purple 
-
-# What is the maximum distance a ball can move between two frames?
-# For 1080p 120fps video: 20 is a good value
-max_distance = 20
-
-# How big is a ball? This is the dark blue circle
-ball_size = 9
-# contour_ball_size = ball size in pixels / 5
-# 20 is a good value
-contour_ball_size = 20
-
-# The tracker 'snaps' onto the ball's position.
-# This is the big light blue circle
-global max_snap_distance
-# max_snap_distance = 1.5 * ball_size
-max_snap_distance = 15
-
-# Pick a path to save the data
-output_path = '/home/stephen/Desktop/data/1.csv'
-
+# h,s,v range of the object to be tracked - get these values with hsv_color_picker.py
+color_values = 125,78,15,160,255,255 #purple
 # Capture your source video
-cap = cv2.VideoCapture('/home/stephen/Desktop/source_vids/ss9131_id_161.MP4')
+cap = cv2.VideoCapture('/home/stephen/Desktop/[3x3x][11].MP4')
+# Pick a path to save the data
+output_path = '/home/stephen/Desktop/data/4.csv'
+# How big is a ball? This is the dark blue circle (9 to 60)
+ball_size = 21
+# How big of a colored swatch is necessary to deam it as a ball (25 to 81 is good)
+contour_ball_size = 81
+global max_snap_distance, max_direction_deviation
+# The tracker 'snaps' onto the ball's position. 45 is good - light blue circle
+max_snap_distance = 31
+# The ball shouldn't change direction drastically 9 is good for 120fps
+max_direction_deviation = 4
 # -------------------- END PARAMETERS -----------------------
-
 # If the tracker gets lost, the last few tracking values are erroneous
 # Preserving the history allows the user can skip back a bit when a tracker error occurs
-p_imgs, history_length, history_idx = [], 80, 0
-
+p_imgs, history_length, history_idx = [], 20, 0
 # Parameters for the text in the user instructions
 font, scale, color, thick = cv2.FONT_HERSHEY_SIMPLEX, .5, (255,0,0), 1
-
 # Takes an image, and a lower and upper bound
 # Returns only the parts of the image in bounds
 def only_color(frame, color_valeus, p_position):
@@ -53,14 +36,12 @@ def only_color(frame, color_valeus, p_position):
     b,r,g,b1,r1,g1 = color_values
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     # Define range of blue color in HSV
-    lower = np.array([b,r,g])
-    upper = np.array([b1,r1,g1])
+    lower, upper = np.array([b,r,g]), np.array([b1,r1,g1])
     # Threshold the HSV image to get only blue colors
     mask = cv2.inRange(hsv, lower, upper)
     # Bitwise-AND mask and original image
     res = cv2.bitwise_and(frame,frame, mask= mask)
     return res, mask
-
 # Finds the largest contour in a list of contours
 # Returns a single contour
 def largest_contour(contours):
@@ -108,14 +89,6 @@ def find_ball_by_color(img, color_values, ball_position):
 
 def distance(a,b): return math.sqrt((a[0]-b[0])**2+(a[1]-b[1])**2)
 
-# Check for maximum distance failure, returns boolean
-def max_distance_failure(a,b):
-    is_failure = False
-    if distance(a,b)> max_distance:
-        is_failure = True
-        print("Max distance failure: ", distance(a,b))
-    return is_failure
-
 # Parameters of lk optical flow
 lk_params = dict(winSize = (ball_size, ball_size),
                  maxLevel = 5,
@@ -139,9 +112,15 @@ p0 = np.array([[[0,0]]], np.float32)
 
 # Main loop
 while True:
+
+    # Program crashes if user tries to use the history before it is built completely 
+    if len(p_imgs)< history_length - history_idx: print("Rebuilding history...")
+    
     # Read frame of video (either from the source or the history)
     if history_idx == 0:
         ret, img = cap.read()
+        #try: img = cv2.resize(img, (1908, 1080)) #resize the image so it fills screen
+        #except: break
         # Save the frame to the history
         if ret: p_imgs.append(img.copy())
     else:
@@ -161,10 +140,9 @@ while True:
 
     # Draw the previous ball positions on the screen
     idx = 0
-    while idx < 40 and idx < len(positions)-3:
-        a = positions[-(idx+2)]
-        b = positions[-(idx+1)]
-        cv2.line(img, a,b, (255,255,255), 1)
+    while idx < 5 and idx < len(positions)-3:
+        a,b = positions[-(idx+2)], positions[-(idx+1)]
+        cv2.line(img, a,b, (0,255,86), 2)
         idx += 1
 
     # Track using optical flow
@@ -176,21 +154,32 @@ while True:
 
     # Get the nearest likely snap position
     snap_position = find_ball_by_color(img, color_values, xy)
-    # Draw a circle around the snap position
+    # Draw a circle around the snap position showing the max snap distance and max directional deviation
     cv2.circle(img, snap_position, max_snap_distance, (255,255,0), 1)
+    cv2.circle(img, snap_position, max_direction_deviation, (0,255,255), 1)
     # Is the likely position found using color close to the optical flow tracker
     if distance(snap_position, xy) < max_snap_distance:
         # The color value is a good one, so snap to that
         xy = snap_position
         p1 = np.array([[[snap_position[0], snap_position[1]]]], np.float32)
 
-    # Check for a max distance failure
-    if max_distance_failure(p0[0][0], p1[0][0]):
-        wait_time = 0 # Stop the tracker
-        p1 = p0 # Get rid of the erronious tracker value
-        xy  = int(p1[0][0][0]), int(p1[0][0][1])
-        cv2.putText(img, "Max Distance Tracker Failure", (50,25), font, scale, (0,0,255), thick, cv2.LINE_AA)
-    else: p0 = p1 # Update p0 to p1
+    # Update the predicted tracking point
+    p0 = p1
+
+    # If there are at least two positions, use those positions to calculate a likely position
+    # where the ball will be in the future, if the ball isn't there, tracker failure!
+    if len(positions)>2:
+        # Get the last two tracking locations
+        past, present = positions[-2:]
+        # Calculate the predicted future position of the ball
+        dx, dy = present[0]-past[0], present[1]-past[1]
+        future = present[0]+dx, present[1]+dy
+        #print(dx,dy, distance(future, xy))
+        cv2.circle(img, future, 2, (255, 255, 255), -1)
+        # If the tracking location and the predicted location don't match, stop the tracker and tell the user
+        if distance(future, xy) > max_direction_deviation:
+            print("Max Direction Deviation Failure", distance(future, xy))
+            wait_time = 0    
     
     # Make circle around ball to show the tracking point
     cv2.circle(img, xy, ball_size, (255,2,1), 1)
@@ -202,21 +191,25 @@ while True:
             cv2.putText(img, "...or press F6 to continue to the next frame", (50,80), font, scale, color, thick, cv2.LINE_AA)
             cv2.putText(img, "...or press F7 to autotrack slowly", (50,110), font, scale, color, thick, cv2.LINE_AA)
             cv2.putText(img, "...or press F8 to autotrack at max speed", (50,140), font, scale, color, thick, cv2.LINE_AA)
+            cv2.putText(img, "...or press F4 to use the predicted value (white dot)", (50,170), font, scale, color, thick, cv2.LINE_AA)
     if wait_time == 1 or wait_time == 25:
         cv2.putText(img, "Auto-Tracking", (50,50), font, scale, color, thick, cv2.LINE_AA)
         cv2.putText(img, "Press any key on mistake", (50,80), font, scale, color, thick, cv2.LINE_AA)
-        cv2.putText(img, "Press F6 to pause", (50,110), font, scale, color, thick, cv2.LINE_AA)
-    
+        cv2.putText(img, "Press F6 to pause", (50,110), font, scale, color, thick, cv2.LINE_AA)    
 
     # Show frame and wait
     cv2.imshow('img', img)
     k = cv2.waitKey(wait_time)
     if k ==27: break
-    
+
+    # User presses F4, use the the predicted value
+    if k == 193:
+        xy = future
+        p0 = np.array([[xy]], np.float32)
     # User Presses F6, advance to the next frame and wait
     if k == 195: wait_time = 0
     # User presses F7, play slowly
-    if k == 196: wait_time = 25
+    if k == 196: wait_time = 65
     # User presses F8, max computer resources
     if k == 197: wait_time = 1
     # User wants to reset the tracker to the last click position 
@@ -235,7 +228,7 @@ while True:
     if len(p_imgs)>history_length: p_imgs.pop(0)
 
     # User has paused any other key because the tracker has gotten lost
-    if k < 194 and k >10:
+    if k < 190 and k >10:
         # Pause
         wait_time = 0
         # Get the history length
@@ -246,6 +239,7 @@ while True:
 # Close the window and release the source video
 cv2.destroyAllWindows()
 cap.release()
+
 
 # Write data to a csv (spreadsheet) file
 import csv
