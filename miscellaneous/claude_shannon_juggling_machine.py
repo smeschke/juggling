@@ -1,8 +1,12 @@
+##
+##vid_writer = cv2.VideoWriter('/home/stephen/Desktop/test.avi',
+##                             cv2.VideoWriter_fourcc('M','J','P','G'),
+##                             120, (width,height))
 import cv2, numpy as np, math, random
 # ------------------------ PARAMETERS --------------------------------
 global size, width, height, bearing_location, arm_length, paddle_length
 global paddle_height, rotation, motor_speed, drive_arm_motor
-global drive_arm_paddle, gravity, mass, elasticity
+global drive_arm_paddle, gravity, mass, elasticity, paddle_elasticity
 # Size of the window
 width, height = 1000,1000
 # Location of the bearing that the arm rotates about
@@ -12,37 +16,44 @@ arm_length = 220
 # Length of the paddle
 paddle_length = 270
 # Amount that the paddle rotates (in Rad)
-rotation = 1
+rotation = .9
 # Speed that the paddle rotates (in Rad)
-motor_speed = .006
+motor_speed = .01045
 # Location that the paddle assembly starts
-current_rotation = .3
+current_rotation = 0
 # Initial state of the stroke of the paddle
 paddle_up = True
 # Constant for the gravity in the environment
-gravity = .08
+gravity = .084
+# How much the balls bounce off the paddle
+paddle_elasticity = .6
 # Ball size
-floor_height, floor_start, floor_end = 600,375,1000-375
+floor_height, floor_start, floor_end = 650,350,1000-350
 size = 10
 distance_threshold = size+5
 mass = 10
-elasticity = .98
+elasticity = .87
 drag = 1
-speed_increment = .00035
+speed_increment = .00098
 # Each ball is an element in the 'balls' list
 # Each ball is represented by a double tuple: ((x_coordinate, y_coordinate), (speed, angle))
 # The x and y coordinates explain position, speed and angle make a vector
 balls = []
 idx = 0
 
+vid_writer = cv2.VideoWriter('/home/stephen/Desktop/test.avi',
+                             cv2.VideoWriter_fourcc('M','J','P','G'),
+                             120, (width,height))
+
 # Create a set of balls
-xxxx = 5
-dd = 40
+xxxx = 20
+dd = 10
 for xx in range(dd):
-    for yy in range(dd):
+    for yy in range(1):
         idx += 1        
-        x = 69 + xx*xxxx
-        y = 250 + yy*xxxx        
+        x = 87 + xx*xxxx
+        y = 300 + yy*xxxx/2
+        
         color = yy*10,xx*10, 255-xx*10
         color = (255 - (255/dd)*xx, (255/dd)*xx, 0)
         balls.append(((x,y), (0,0), color))
@@ -73,7 +84,7 @@ def addVectors(a,b):
 def bounce(ball):
     (x, y), (speed, angle) = ball
     # There is only one boundery, the floor
-    if y > floor_height - size:
+    if y > floor_height - size and y < floor_height:
         if x > floor_start and x < floor_end:
             y = 2*(floor_height - size) - y
             angle = math.pi - angle
@@ -147,20 +158,24 @@ def paddle_collision(ball, rotation):
             if is_above(paddle_start, paddle_end, ball[0]):
                 # Ball has hit the line from the top
                 angle = -angle + (rotation + angle)
-                if paddle_up and hit_right:
-                    speed += distance(bearing_location, ball[0]) * speed_increment
-                    #print('hit_right')
-                if not paddle_up and hit_left:
-                    speed += distance(bearing_location, ball[0]) * speed_increment
-                    #print('hit_left')
-                
-            # The ball has hit the bottom of the line
-            else:
-                speed = 6
-                angle = math.pi
+                angle2 = rotation + math.pi/2
+                angle2 = rotation
+                length = distance((x,y), bearing_location)
+                if hit_right:
+                    a = bearing_location[0] - math.cos(rotation) * length, bearing_location[1] - math.sin(rotation) * length
+                    b = bearing_location[0] - math.cos(rotation+motor_speed) * length, bearing_location[1] - math.sin(rotation+motor_speed) * length
+                    speed2 = distance(a, b)
+                    angle, speed = addVectors((angle, speed), (angle2, speed2))
+                    speed *= paddle_elasticity
+                if hit_left:
+                    a = bearing_location[0] + math.cos(rotation) * length, bearing_location[1] + math.sin(rotation) * length
+                    b = bearing_location[0] +  math.cos(rotation+motor_speed) * length, bearing_location[1] + math.sin(rotation+motor_speed) * length
+                    speed2 = distance(a, b)
+                    angle, speed = addVectors((angle, speed), (angle2, speed2))
+                    speed *= paddle_elasticity
     return (x, y), (speed, angle)
     
-while True:
+while len(balls)>0:
     # Create background
     bg = np.zeros((height, width, 3), np.uint8)
     bg[:,:,:] = 123,123,123
@@ -192,6 +207,7 @@ while True:
         cv2.circle(bg, xy, size, color, -1)
     balls = new_balls
     cv2.imshow('bg', bg)
+    vid_writer.write(bg)
 
     
     k = cv2.waitKey(1)
