@@ -10,25 +10,33 @@ bearing_location = width/2,450
 # Length from bearing to start of paddle
 arm_length = 250
 # Length of the paddle
-paddle_length = 150
-end_length,paddle_height = 120, .4
-hypot = math.sqrt((arm_length + paddle_length)**2 + end_length**2) + 15
+paddle_length = 80
+end_length,paddle_height = 60, .2
+hypot = math.sqrt((arm_length + paddle_length)**2 + end_length**2) 
 end_length = -.6
 # Total Rotation and Motor Speed
-total_rotation, motor_speed = .65, .009
+total_rotation, motor_speed = .15, .0099
 # Location and initial state of the paddles
 current_rotation, paddle_up = 0, True
 # Constants for the environment
-gravity, elasticity, paddle_elasticity = .069, .8, .55
+gravity, elasticity, paddle_elasticity = .069, .75, .505
 # Parameters for the floor that the balls bounce off of
 floor_height, floor_start, floor_end = 720,305,1000-305
 # Ball size, number, and color
-size, num_balls, colors = 12, 3, [(0,255,255),(255,0,255),(255,255,0),(0,255,0),(0,0,255),(123,0,255),(0,255,255),(255,255,0),(255,0,0),(0,255,0),(0,0,255),(123,0,255),(0,255,255),(255,255,0),(255,0,0),(0,255,0),(0,0,255),(123,0,255),(0,255,255),(255,255,0),(255,0,0),(0,255,0),(0,0,255),(123,0,255)]
+size, num_balls, colors = 12, 5, [(0,255,255),(255,0,255),(255,255,0),(0,255,0),(0,0,255)]
+#size, num_balls, colors = 12, 5, []
+##for i in range(986):
+##    colors.append((0,random.randint(234,255),random.randint(123,255)))
+##    colors.append((random.randint(123,255),0,random.randint(234,255)))
+##    colors.append((random.randint(123,255),random.randint(234,255),0))
 # Ball Spawn Locations
-x_origion, y_origion = bearing_location[0] - arm_length - paddle_length + 60, bearing_location[1] - 30
+spawn_variance = 0
+x_origion, y_origion = bearing_location[0] - (arm_length + paddle_length/2), bearing_location[1] - 5
 # Tail length
 scale = 20
-frame_number, last_ball, balls, time_between_balls = 0, 0, [], 123
+frame_number, balls, time_between_balls = 0, [], 55
+last_ball = -time_between_balls
+motor_speed, total_rotation, floor_height, arm_length = (0.0138, 0.506, 537, 250)
 # ------------------------END PARAMETERS --------------------------------
 
 vid_writer = cv2.VideoWriter('/home/stephen/Desktop/test.avi', cv2.VideoWriter_fourcc('M','J','P','G'), 120, (width,height))
@@ -73,72 +81,66 @@ def accelerate(ball, vector):
 # Draws the paddle
 def draw_paddle(img, rotation):
     # Get paddle locations
-    (right_paddle_start, right_paddle_end, right_line_end), (left_paddle_start, left_paddle_end, left_line_end) = calculate_paddle_locations(rotation)
-    # Draw lines and circles
-    cv2.line(img, tuple(np.array(left_paddle_start, int)), tuple(np.array(left_paddle_end, int)), (234,234,234), 4)
-    cv2.line(img, tuple(np.array(right_paddle_start, int)), tuple(np.array(right_paddle_end, int)), (234,234,234), 4)
-    cv2.line(img, tuple(np.array(left_paddle_end, int)), tuple(np.array(left_line_end, int)), (234,234,234), 4)
-    cv2.line(img, tuple(np.array(right_paddle_end, int)), tuple(np.array(right_line_end, int)), (234,234,234), 4)
-    cv2.circle(bg, tuple(np.array(left_paddle_end, int)), 5, (123,255,255), -1)
-    cv2.circle(bg, tuple(np.array(right_paddle_end, int)), 5, (255,0,0), -1)
+    right_paddle, left_paddle = calculate_paddle_locations(rotation)
+    # Iterate though the paddles
+    for paddle_start, paddle_end, line_end in [right_paddle, left_paddle]:
+        # Draw a line for each part of the paddle
+        cv2.line(img, tuple(np.array(paddle_start, int)), tuple(np.array(paddle_end, int)), (234,234,234), 4)
+        cv2.line(img, tuple(np.array(line_end, int)), tuple(np.array(paddle_end, int)), (234,234,234), 4)
     return img
 
 # Distance between two points
 def distance(a,b): return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2)
 
+def get_spawn_location(current_rotation):
+    # Get current paddle locations  
+    (right_paddle_start, right_paddle_end, _), (left_paddle_start, left_paddle_end, _) = calculate_paddle_locations(current_rotation)
+    # Calculate the height at the midpoint of the paddle
+    midpoint_height = -size + (right_paddle_start[1] + right_paddle_end[1])/2
+    return midpoint_height
+    
+
 # Checks for paddle collisions
 def paddle_collision(ball, current_rotation, previous_current_rotation):
     (x, y), (speed, angle) = ball
-    # Get paddle Locations  
+    # Get current paddle locations  
     (right_paddle_start, right_paddle_end, _), (left_paddle_start, left_paddle_end, _) = calculate_paddle_locations(current_rotation)
+    # Get previous paddle locations
     (pright_paddle_start, pright_paddle_end, _), (pleft_paddle_start, pleft_paddle_end, _) = calculate_paddle_locations(previous_current_rotation)
-
+    # Compute the length from the bearing_location to the ball
     length = distance((x,y), bearing_location)
-
-    if ball_line_collision(ball, (left_paddle_start, left_paddle_end),(pleft_paddle_start, pleft_paddle_end)):
-        # Reflect the direction that the ball is traveling
-        angle = -angle + (current_rotation + angle)
-        angle2 = current_rotation
-        # Reverse the angle of the paddle if it is going up
-        if paddle_up: angle2 = angle2 - math.pi
-        # Calculate the point that the ball collides with
-        a = bearing_location[0] + math.cos(current_rotation) * length, bearing_location[1] + math.sin(current_rotation) * length
-        b = bearing_location[0] +  math.cos(current_rotation+motor_speed) * length, bearing_location[1] + math.sin(current_rotation+motor_speed) * length
-        # Calculate the speed of the point that the ball collides with
-        speed2 = distance(a, b)
-        # Add the vectors
-        angle, speed = addVectors((angle, speed), (angle2, speed2))
-        # Dampen the bounce
-        speed *= paddle_elasticity
-        y -= 1
-       
-    if ball_line_collision(ball, (right_paddle_start, right_paddle_end),(pright_paddle_start, pright_paddle_end)):
-        # Reflect the direction that the ball is traveling
-        angle = -angle + (current_rotation + angle)
-        angle2 = current_rotation
-        # Reverse the angle of the paddle if it is going up
-        if not paddle_up: angle2 = angle2 - math.pi
-        a = bearing_location[0] - math.cos(current_rotation) * length, bearing_location[1] - math.sin(current_rotation) * length
-        b = bearing_location[0] - math.cos(current_rotation+motor_speed) * length, bearing_location[1] - math.sin(current_rotation+motor_speed) * length
-        # Calculate the speed of the point that the ball collides with
-        speed2 = distance(a, b)
-        # Add the vectors
-        angle, speed = addVectors((angle, speed), (angle2, speed2))
-        # Dampen the bounce
-        speed *= paddle_elasticity
-        y -= 1
-        
+    # Make the paddles into a list
+    right_paddle = (right_paddle_start, right_paddle_end, _), (pright_paddle_start, pright_paddle_end, _)
+    left_paddle = (left_paddle_start, left_paddle_end, _), (pleft_paddle_start, pleft_paddle_end, _)
+    paddles = [right_paddle, left_paddle]
+    # Iterate though the paddles
+    for paddle in paddles:
+        # Assign human-readable variable names
+        (paddle_start, paddle_end, _),(p_paddle_start, p_paddle_end, _) = paddle
+        # Check if the ball collides with the paddle
+        if ball_line_collision(ball, (paddle_start, paddle_end),(p_paddle_start, p_paddle_end)):
+            # Reflect the direction that the ball is traveling
+            angle = -angle + (current_rotation + angle)
+            # Calculate the point that the ball collides with
+            a = bearing_location[0] + math.cos(current_rotation) * length, bearing_location[1] + math.sin(current_rotation) * length
+            b = bearing_location[0] +  math.cos(current_rotation+motor_speed) * length, bearing_location[1] + math.sin(current_rotation+motor_speed) * length
+            # Calculate the speed of the point that the ball collides with
+            speed2 = distance(a, b)
+            # Add the vectors - I can't explain this part
+            angle, speed = addVectors((angle, speed), (current_rotation, speed2))
+            # Dampen the bounce
+            speed *= paddle_elasticity        
     return (x, y), (speed, angle)
 
 # Calculates the location of various parts of the paddle base on the paddle's current rotation
 def calculate_paddle_locations(rotation):
-    # Check if the ball hits the line
+    # Calculate the locations of the parts of the RIGHT paddle
     right_paddle_start = bearing_location[0] - math.cos(rotation) * arm_length, bearing_location[1] - math.sin(rotation) * arm_length
     right_paddle_end = bearing_location[0] - math.cos(rotation) * (arm_length + paddle_length), bearing_location[1] - math.sin(rotation) * (arm_length + paddle_length)
     right_line_end = bearing_location[0] - math.cos(rotation+paddle_height) * (hypot), bearing_location[1] - math.sin(rotation+paddle_height) * (hypot)
     right_paddle = (right_paddle_start, right_paddle_end, right_line_end)
     
-    # Get the location of the paddle
+    # Calculate the locations of the parts of the LEFT paddle
     left_paddle_start = bearing_location[0] + math.cos(rotation) * arm_length, bearing_location[1] + math.sin(rotation) * arm_length
     left_paddle_end = bearing_location[0] + math.cos(rotation) * (arm_length + paddle_length), bearing_location[1] + math.sin(rotation) * (arm_length + paddle_length)
     left_line_end = bearing_location[0] + math.cos(rotation-paddle_height) * (hypot), bearing_location[1] + math.sin(rotation-paddle_height) * (hypot)  
@@ -153,16 +155,10 @@ def paddle_end_collision(ball, current_rotation, previous_current_rotation):
     (_, right_paddle_end, right_line_end), (_, left_paddle_end, left_line_end) = calculate_paddle_locations(current_rotation)
     # Get locations of paddle in previous frame
     (_, pright_paddle_end, pright_line_end), (_, pleft_paddle_end, pleft_line_end) = calculate_paddle_locations(previous_current_rotation)
-    # Check for collisions on the left size of the paddle
-    if ball_line_collision(ball, (left_paddle_end, left_line_end),(pleft_paddle_end, pleft_line_end)):
-        x, y = x-30, y-5
-        angle = angle + current_rotation               
-        speed *= paddle_elasticity
+    # Check for collisions on the left side of the paddle
+    if ball_line_collision(ball, (left_paddle_end, left_line_end),(pleft_paddle_end, pleft_line_end)): x, y = x-5, y
     # Check for collisions on the right side of the paddle
-    if ball_line_collision(ball, (right_paddle_end, right_line_end),(pright_paddle_end, pright_line_end)):
-        x, y = x+30, y-5
-        angle = angle + current_rotation               
-        speed *= paddle_elasticity
+    if ball_line_collision(ball, (right_paddle_end, right_line_end),(pright_paddle_end, pright_line_end)): x, y = x+5, y
     return (x, y), (speed, angle)
 
 # Function that checks for a collision between a line and a ball
@@ -182,23 +178,28 @@ def ball_line_collision(ball, line1, line2):
     if area_line != area_ball_line: return True
     else: return False
     
-previous_current_rotation = 0
+previous_current_rotation, data, juggling = 0, [], True
 # Main Loop
-while True:
+while juggling:
 
     # If there are fewer than the desired number of balls in the environment, try to add one
     if len(balls) < num_balls:
         # If the paddle is in the right part of the stroke, and it has been a partial stroke since the last ball
-        if abs(current_rotation)<.08 and paddle_up and abs(frame_number-last_ball) > time_between_balls:
-            # Add a ball
-            balls.append(((x_origion , y_origion), (0,0), colors.pop(0)))
-            # Reset the variable that tracks when the last ball was dropped
-            last_ball = frame_number
+        if abs(current_rotation)<.1 and paddle_up and abs(frame_number-last_ball) > time_between_balls:
+            if len(colors) > 0:
+                # Add a ball
+                xy = x_origion + random.randint(-spawn_variance, spawn_variance), get_spawn_location(current_rotation)
+                balls.append((xy, (0,0), colors.pop(0)))
+                # Reset the variable that tracks when the last ball was dropped
+                last_ball = frame_number
+        # If there are no more balls stop juggling and quit the program
+        if len(colors)==0 and len(balls) == 0: juggling = False
+        
         
     # Create background
     bg = np.zeros((height, width, 3), np.uint8)
-    bg[:,:,:] = 123,123,123
-    cv2.line(bg, (floor_start, floor_height),(floor_end, floor_height),(0,0,0),3)
+    bg[:,:,:] = 12,12,12
+    cv2.line(bg, (floor_start, floor_height),(floor_end, floor_height),(234,234,234),3)
 
     # Create list to store updated poisitions
     new_balls = []
@@ -211,11 +212,14 @@ while True:
     # Draw paddle
     bg = draw_paddle(bg, current_rotation)
 
+    current_positions = []
+
 
     # Iterate though each ball and apply movement, gravity, bounce, and collisions
     for ball in balls:        
         color = ball[2]
         ball = ball[0], ball[1]
+        current_positions.append(ball[0])
         vector = 0,-gravity
         ball = move(ball)
         ball = bounce(ball)
@@ -235,26 +239,43 @@ while True:
 
         # Draw speed and angle using a vector
         vector_end = x + math.cos(angle+math.pi/2)*scale*speed, y + math.sin(angle+math.pi/2)*scale*speed        
-        cv2.line(bg, tuple(np.array((x,y), int)), tuple(np.array(vector_end, int)), color, 5)
+        #cv2.line(bg, tuple(np.array((x,y), int)), tuple(np.array(vector_end, int)), color, 5)
 
     # Update list of balls
     balls = new_balls
+    while len(current_positions) < num_balls: current_positions.append((0,0))
+    data.append(current_positions)
 
     # Show Image and Wait
     cv2.imshow('bg', bg)
-    if frame_number>2 and frame_number%2 ==0: vid_writer.write(cv2.addWeighted(bg, .5, p_img, .5, 1))
+    #if frame_number>2 and frame_number%2 ==0: vid_writer.write(cv2.addWeighted(bg, .5, p_img, .5, 1))
+    vid_writer.write(bg)
     p_img = bg.copy()
     frame_number += 1
     k = cv2.waitKey(1)
-    if k == 115:
-        print(frame_number)
-        motor_speed += .0001
-
-    if k == 116:
-        print(frame_number)
-        motor_speed -= .0001
+    # Use left hand to adjust movement (speed and total rotation)
+    if k == ord('e'): motor_speed += .001
+    if k == ord('d'): motor_speed -= .001
+    if k == ord('f'): total_rotation += .001
+    if k == ord('s'): total_rotation -= .001
+    # Use the right hand to adjust the paddle length and bounce floor elevation
+    if k == ord('i'): arm_length += 1
+    if k == ord('k'): arm_length -= 1
+    if k == ord('j'): floor_height += 1
+    if k == ord('l'): floor_height -= 1
+    # Spacebar to clear the balls
+    if k == 32: balls = []    
+    if k != -1: print('motor_speed: '+ str(motor_speed), ' total_rotation: ' + str(total_rotation), ' floor_height: ' + str(floor_height), ' arm_length: ' + str(arm_length))
     if k == 27: break
 
     # Remember the previous rotation
     previous_current_rotation = current_rotation
 cv2.destroyAllWindows()
+
+# Write the data
+import pandas as pd
+a,b,c,d,e = zip(*data)
+for idx, data in zip([1,2,3,4,5],[a,b,c,d,e]):
+    print(idx, len(data))
+    df = pd.DataFrame(np.array(data))
+    df.to_csv('/home/stephen/Desktop/data/'+str(idx)+'.csv', index = False)
