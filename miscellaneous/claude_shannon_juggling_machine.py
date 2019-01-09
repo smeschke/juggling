@@ -1,44 +1,55 @@
 import cv2, numpy as np, math, random
-# ------------------------ PARAMETERS --------------------------------
-global size, width, height, bearing_location, arm_length, paddle_length, x_origion, y_origion
-global paddle_height, rotation, motor_speed, drive_arm_motor, end_length, paddle_height
-global drive_arm_paddle, gravity, mass, elasticity, paddle_elasticity, n_balls, ball_space
+# ------------------------ PARAMETERS FOR ENVIRONMENT --------------------------------
 # Size of the window
 width, height = 1000,1000
 # Location of the bearing that the arm rotates about
-bearing_location = width/2,450
+bearing_location = width/2,700
 # Length from bearing to start of paddle
-arm_length = 250
+arm_length = 290
 # Length of the paddle
-paddle_length = 80
-end_length,paddle_height = 60, .2
-hypot = math.sqrt((arm_length + paddle_length)**2 + end_length**2) 
-end_length = -.6
-# Total Rotation and Motor Speed
-total_rotation, motor_speed = .15, .0099
-# Location and initial state of the paddles
-current_rotation, paddle_up = 0, True
+paddle_length = 40
+# The length of the end of the paddle (and it's height in RAD)
+end_length, paddle_height = 120, .4
+# Distance from the bearing to the end of the top of the paddle
+hypot = math.sqrt((arm_length + paddle_length)**2 + end_length**2) + 40
 # Constants for the environment
 gravity, elasticity, paddle_elasticity = .069, .75, .505
-# Parameters for the floor that the balls bounce off of
-floor_height, floor_start, floor_end = 720,305,1000-305
+# Define the gravity vector
+vector = 0,-gravity
+# Initial location and initial state of the paddles
+current_rotation, paddle_up = 0, True
+# Parameters for the floor that the balls bounce off
+floor_length, floor_height = 450, 842
+# Calculate the starting and ending points of the floor
+floor_start, floor_end = int(bearing_location[0]-floor_length/2),int(bearing_location[0]+floor_length/2)
+# ------------------------ PARAMETERS FOR JUGGLING (MOVEMENT)--------------------------
 # Ball size, number, and color
-size, num_balls, colors = 12, 5, [(0,255,255),(255,0,255),(255,255,0),(0,255,0),(0,0,255)]
-#size, num_balls, colors = 12, 5, []
-##for i in range(986):
-##    colors.append((0,random.randint(234,255),random.randint(123,255)))
-##    colors.append((random.randint(123,255),0,random.randint(234,255)))
-##    colors.append((random.randint(123,255),random.randint(234,255),0))
+size, num_balls, colors = 12, 9, [(255,255,0),(0,255,255),(255,0,255),(0,255,0),(0,0,255),(123,123,123)]
+# Extend the list of colors so that lots of balls can respawn incase one is dropped
+for i in range(986): colors.append((random.randint(123, 255),random.randint(123,255),random.randint(56,255)))
 # Ball Spawn Locations
-spawn_variance = 0
 x_origion, y_origion = bearing_location[0] - (arm_length + paddle_length/2), bearing_location[1] - 5
-# Tail length
+# Tail length for vector
 scale = 20
-frame_number, balls, time_between_balls = 0, [], 55
+# List of ball objects
+frame_number, balls = 0, []
+# Minimum time between ball spawn
+time_between_balls = 20
 last_ball = -time_between_balls
-motor_speed, total_rotation, floor_height, arm_length = (0.0138, 0.506, 537, 250)
+# Motor speed, and total rotation of the arm (in RAD) are defined below for different numbers of balls
+# Parameters for 3
+num_balls, motor_speed, total_rotation = (3, 0.0118, 0.679)
+# Parameters for 5
+#num_balls, motor_speed, total_rotation = (5, 0.0148, 0.502)
+# Parameters for 7
+#num_balls, motor_speed, total_rotation = (7, 0.0179, 0.404)
+# Parameters for 9
+#num_balls, motor_speed, total_rotation = (9, 0.0189, 0.349)
+# Parameters for 11
+#num_balls, motor_speed, total_rotation = (11, 0.0199, 0.321)
 # ------------------------END PARAMETERS --------------------------------
 
+# For writing video
 vid_writer = cv2.VideoWriter('/home/stephen/Desktop/test.avi', cv2.VideoWriter_fourcc('M','J','P','G'), 120, (width,height))
         
 # Update position base on speed and angle
@@ -68,7 +79,7 @@ def bounce(ball):
             y = 2*(floor_height - size) - y
             # Update angle (this only affects the y component of ball's vector)
             angle = math.pi - angle
-            # Disapate some of the energy to the bounce
+            # Dissipate some of the energy to the bounce
             speed *= elasticity
     return (x, y), (speed, angle)
 
@@ -128,7 +139,7 @@ def paddle_collision(ball, current_rotation, previous_current_rotation):
             speed2 = distance(a, b)
             # Add the vectors - I can't explain this part
             angle, speed = addVectors((angle, speed), (current_rotation, speed2))
-            # Dampen the bounce
+            # Dissipate some of the energy to the bounce
             speed *= paddle_elasticity        
     return (x, y), (speed, angle)
 
@@ -174,10 +185,11 @@ def ball_line_collision(ball, line1, line2):
     cv2.circle(img_line, (int(ball[0][0]), int(ball[0][1])), size, 0, -1)
     # Calculate the new area
     area_ball_line = sum(sum(img_line))
-    # If the areas are the same, they do not overlapp, and there is no collision
+    # If the areas are the same, they do not overlap, and there is no collision
     if area_line != area_ball_line: return True
     else: return False
-    
+
+# Variables that track the state of the environment
 previous_current_rotation, data, juggling = 0, [], True
 # Main Loop
 while juggling:
@@ -186,19 +198,20 @@ while juggling:
     if len(balls) < num_balls:
         # If the paddle is in the right part of the stroke, and it has been a partial stroke since the last ball
         if abs(current_rotation)<.1 and paddle_up and abs(frame_number-last_ball) > time_between_balls:
+            # If there are any balls left in the queue, add one
             if len(colors) > 0:
-                # Add a ball
-                xy = x_origion + random.randint(-spawn_variance, spawn_variance), get_spawn_location(current_rotation)
+                # Get the ball's spawn location
+                xy = x_origion, get_spawn_location(current_rotation)
+                # Add the ball object to the list of balls
                 balls.append((xy, (0,0), colors.pop(0)))
                 # Reset the variable that tracks when the last ball was dropped
                 last_ball = frame_number
         # If there are no more balls stop juggling and quit the program
         if len(colors)==0 and len(balls) == 0: juggling = False
-        
-        
+                
     # Create background
     bg = np.zeros((height, width, 3), np.uint8)
-    bg[:,:,:] = 12,12,12
+    # Draw line for balls to bounce off
     cv2.line(bg, (floor_start, floor_height),(floor_end, floor_height),(234,234,234),3)
 
     # Create list to store updated poisitions
@@ -212,19 +225,24 @@ while juggling:
     # Draw paddle
     bg = draw_paddle(bg, current_rotation)
 
+    # Create temporary list to save the positions of the balls in this frame
     current_positions = []
 
-
     # Iterate though each ball and apply movement, gravity, bounce, and collisions
-    for ball in balls:        
-        color = ball[2]
-        ball = ball[0], ball[1]
+    for ball in balls:
+        # Get the ball's position and color
+        ball, color = (ball[0], ball[1]), ball[2]
+        # Add the ball to the list of current ball positions
         current_positions.append(ball[0])
-        vector = 0,-gravity
+        # Move the ball (based on its position, speed and direction
         ball = move(ball)
+        # Bounce the ball off the floor (if applicable)
         ball = bounce(ball)
+        # Accelerate the ball downward due to gravity
         ball = accelerate(ball, vector)
+        # Bounce the ball of the bottom of the paddle (if applicable)
         ball = paddle_collision(ball, current_rotation, previous_current_rotation)
+        # Bounce the ball off the end of the paddle (if applicable)
         ball = paddle_end_collision(ball, current_rotation, previous_current_rotation)
 
         # Check if the ball has bounced out of the environment
@@ -232,7 +250,7 @@ while juggling:
         if speed!=0 and x>0 and x<width and y>0 and y<height:
             # Check if ball is resting on bouncing surface
             if speed < .2 and abs(y-floor_height) < size*1.5: pass
-            # Ball is currently being juggled and should remain in play
+            # Ball is being juggled and should stay in play
             else: new_balls.append((ball[0], ball[1], color))
         # Draw the ball
         cv2.circle(bg, tuple(np.array((x,y), int)), size, color, -1)
@@ -248,34 +266,50 @@ while juggling:
 
     # Show Image and Wait
     cv2.imshow('bg', bg)
-    #if frame_number>2 and frame_number%2 ==0: vid_writer.write(cv2.addWeighted(bg, .5, p_img, .5, 1))
     vid_writer.write(bg)
-    p_img = bg.copy()
     frame_number += 1
     k = cv2.waitKey(1)
-    # Use left hand to adjust movement (speed and total rotation)
+
+    # --------------- ALLOW USER TO CHANGE PARAMETERS DURING RUNTIME
+    # Use 'e' and 'd to change the speed
     if k == ord('e'): motor_speed += .001
     if k == ord('d'): motor_speed -= .001
+    # Use 'f' and 's' to change to amount that the arm rotates
     if k == ord('f'): total_rotation += .001
     if k == ord('s'): total_rotation -= .001
-    # Use the right hand to adjust the paddle length and bounce floor elevation
+    # Use 'i' and 'k' to change the length of the arm
     if k == ord('i'): arm_length += 1
     if k == ord('k'): arm_length -= 1
+    # Use 'j' and 'l' to change the hight of the bouncing floor
     if k == ord('j'): floor_height += 1
     if k == ord('l'): floor_height -= 1
+    # Use 'y' and 'h' to change the vertical location of the bearing    
+    if k == ord('y'): bearing_location = bearing_location[0], bearing_location[1] + 1
+    if k == ord('h'): bearing_location = bearing_location[0], bearing_location[1] - 1
+    # Use 't' and 'g' to change the number of balls
+    if k == ord('t'): num_balls + 1
+    if k == ord('g'): num_balls - 1
     # Spacebar to clear the balls
-    if k == 32: balls = []    
-    if k != -1: print('motor_speed: '+ str(motor_speed), ' total_rotation: ' + str(total_rotation), ' floor_height: ' + str(floor_height), ' arm_length: ' + str(arm_length))
+    if k == 32: balls = []
+    # If user has changed parameters, recompute variables based on new parameters
+    if k != -1:
+        x_origion, y_origion = bearing_location[0] - (arm_length + paddle_length/2), bearing_location[1] - 5
+        hypot = math.sqrt((arm_length + paddle_length)**2 + end_length**2) +40
+        # Print the new parameters
+        print('motor_speed: '+ str(motor_speed), ' total_rotation: ' + str(total_rotation), ' floor_height: ' + str(floor_height), ' arm_length: ' + str(arm_length))
+    # Press 'esc' to quit
     if k == 27: break
 
     # Remember the previous rotation
     previous_current_rotation = current_rotation
 cv2.destroyAllWindows()
 
+print((motor_speed, total_rotation, floor_height, arm_length))
+
 # Write the data
 import pandas as pd
-a,b,c,d,e = zip(*data)
-for idx, data in zip([1,2,3,4,5],[a,b,c,d,e]):
+a,b,c,d,e,f,g,h,i = zip(*data)
+for idx, data in zip([1,2,3,4,5,6,7,8,9],[a,b,c,d,e,f,g,h,i]):
     print(idx, len(data))
     df = pd.DataFrame(np.array(data))
     df.to_csv('/home/stephen/Desktop/data/'+str(idx)+'.csv', index = False)
