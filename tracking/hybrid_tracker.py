@@ -1,24 +1,28 @@
 import cv2, math, numpy as np
 # --------------------- START PARAMETERS -----------------------
 # h,s,v range of the object to be tracked - get these values with hsv_color_picker.py
-color_values = 125,78,15,160,255,255 #purple
+color_values = 128,119,55,157,255,126
+#color_values = 115,110,45,175,255,186
+color_values = 126,107,7,206,255,152
+
 # Capture your source video
-cap = cv2.VideoCapture('/home/stephen/Desktop/[3x3x][11].MP4')
+cap = cv2.VideoCapture('/home/stephen/Desktop/642.MP4')
 # Pick a path to save the data
-output_path = '/home/stephen/Desktop/data/4.csv'
+output_path = '/home/stephen/Desktop/data/1.csv'
 # How big is a ball? This is the dark blue circle (9 to 60)
-ball_size = 21
+ball_size = 15
 # How big of a colored swatch is necessary to deam it as a ball (25 to 81 is good)
-contour_ball_size = 81
+contour_ball_size = 15
 global max_snap_distance, max_direction_deviation
 # The tracker 'snaps' onto the ball's position. 45 is good - light blue circle
-max_snap_distance = 31
+max_snap_distance = 20
 # The ball shouldn't change direction drastically 9 is good for 120fps
-max_direction_deviation = 4
-# -------------------- END PARAMETERS -----------------------
+max_direction_deviation = 35
+deviation_warning = 5
 # If the tracker gets lost, the last few tracking values are erroneous
 # Preserving the history allows the user can skip back a bit when a tracker error occurs
-p_imgs, history_length, history_idx = [], 20, 0
+p_imgs, history_length, history_idx = [], 30, 0
+# -------------------- END PARAMETERS ----------------------
 # Parameters for the text in the user instructions
 font, scale, color, thick = cv2.FONT_HERSHEY_SIMPLEX, .5, (255,0,0), 1
 # Takes an image, and a lower and upper bound
@@ -41,6 +45,7 @@ def only_color(frame, color_valeus, p_position):
     mask = cv2.inRange(hsv, lower, upper)
     # Bitwise-AND mask and original image
     res = cv2.bitwise_and(frame,frame, mask= mask)
+    #cv2.imshow('mask', mask)
     return res, mask
 # Finds the largest contour in a list of contours
 # Returns a single contour
@@ -52,7 +57,7 @@ def largest_contour(contours):
 def get_contours(im):
     imgray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
     _ ,thresh = cv2.threshold(imgray,0,255,0)
-    _, contours, _ = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
     return contours
 
 # Finds the center of a contour
@@ -109,7 +114,7 @@ wait_time = 0
 
 # Initialize tracker value, this will get reset by the user
 p0 = np.array([[[0,0]]], np.float32)
-
+fails = 0
 # Main loop
 while True:
 
@@ -119,8 +124,11 @@ while True:
     # Read frame of video (either from the source or the history)
     if history_idx == 0:
         ret, img = cap.read()
-        #try: img = cv2.resize(img, (1908, 1080)) #resize the image so it fills screen
-        #except: break
+        try:
+            #img = cv2.resize(img, (1908, 1080)) #resize the image so it fills screen
+            #img = cv2.blur(img, (15,15))
+            pass
+        except: break
         # Save the frame to the history
         if ret: p_imgs.append(img.copy())
     else:
@@ -137,13 +145,6 @@ while True:
     except: old_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     try: img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     except: break
-
-    # Draw the previous ball positions on the screen
-    idx = 0
-    while idx < 5 and idx < len(positions)-3:
-        a,b = positions[-(idx+2)], positions[-(idx+1)]
-        cv2.line(img, a,b, (0,255,86), 2)
-        idx += 1
 
     # Track using optical flow
     # p1 is the value produced by the optical flow tracker
@@ -177,9 +178,13 @@ while True:
         #print(dx,dy, distance(future, xy))
         cv2.circle(img, future, 2, (255, 255, 255), -1)
         # If the tracking location and the predicted location don't match, stop the tracker and tell the user
+        if distance(future, xy) > deviation_warning:
+            print("Direction Warning: " , distance(future, xy))
+        else:
+            if fails > 0: fails -=1
         if distance(future, xy) > max_direction_deviation:
-            print("Max Direction Deviation Failure", distance(future, xy))
-            wait_time = 0    
+            print("Direction Fail: ", distance(future, xy))
+            wait_time = 0           
     
     # Make circle around ball to show the tracking point
     cv2.circle(img, xy, ball_size, (255,2,1), 1)
@@ -195,7 +200,14 @@ while True:
     if wait_time == 1 or wait_time == 25:
         cv2.putText(img, "Auto-Tracking", (50,50), font, scale, color, thick, cv2.LINE_AA)
         cv2.putText(img, "Press any key on mistake", (50,80), font, scale, color, thick, cv2.LINE_AA)
-        cv2.putText(img, "Press F6 to pause", (50,110), font, scale, color, thick, cv2.LINE_AA)    
+        cv2.putText(img, "Press F6 to pause", (50,110), font, scale, color, thick, cv2.LINE_AA)
+
+    # Draw the previous ball positions on the screen
+    idx = 0
+    while idx < 20 and idx < len(positions)-3:
+        a,b = positions[-(idx+2)], positions[-(idx+1)]
+        cv2.line(img, a,b, (0,255,86), 4)
+        idx += 1
 
     # Show frame and wait
     cv2.imshow('img', img)
