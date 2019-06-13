@@ -39,7 +39,7 @@ def largest_contour(contours):
 def get_contours(im, threshold_value):
     imgray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
     _ ,thresh = cv2.threshold(imgray,0,255,0)
-    _, contours, _ = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
     return contours
 
 #finds the center of a contour
