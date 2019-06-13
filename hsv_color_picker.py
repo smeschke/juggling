@@ -1,19 +1,21 @@
 import cv2
 import numpy as np
 
-cap = cv2.VideoCapture('/home/stephen/Desktop/531.avi')
+# Capture the webcam (or enter path to video)
+cap = cv2.VideoCapture(0)
 
 
 def nothing(arg): pass
 
 #takes an image, and a lower and upper bound
 #returns only the parts of the image in bounds
-def only_color(frame, (b,r,g,b1,r1,g1), morph):
+def only_color(frame, color_ranges, morph):
+    h,s,v,h1,s1,v1 = color_ranges
     # Convert BGR to HSV
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     # define range of blue color in HSV
-    lower = np.array([b,r,g])
-    upper = np.array([b1,r1,g1])
+    lower = np.array([h,s,v])
+    upper = np.array([h1,s1,v1])
     # Threshold the HSV image to get only blue colors
     mask = cv2.inRange(hsv, lower, upper)
     #define kernel size (for touching up the image)
@@ -39,7 +41,6 @@ while True:
 
     #read image from the video
     _, img = cap.read()
-    #img = cv2.resize(img, (img.shape[1]/2, img.shape[0]/2))
 
     #get trackbar values
     h= cv2.getTrackbarPos('h', 'image')
@@ -55,12 +56,12 @@ while True:
     
     #show the image and wait
     cv2.imshow('img', img)
-    cv2.imshow('mask', mask)
-    k=cv2.waitKey(150)
+    cv2.imshow('image', mask)
+    k=cv2.waitKey(1)
     if k==27: break
 
 #print calues
-print 'h,s,v,h1,s1,v1', h,s,v,h1,s1,v1
+print('h,s,v,h1,s1,v1', h,s,v,h1,s1,v1)
 
 #release the video to avoid memory leaks, and close the window
 cap.release()
