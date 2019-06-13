@@ -1,5 +1,6 @@
 # juggling
 Various computer vision and machine learning Python scripts
+Required: Python3 OpenCV4+
 
 # How to draw tails on juggling balls (using color tracking).
 
