@@ -4,19 +4,13 @@ AccelStepper stepper2(AccelStepper::DRIVER, 4, 3);
 
 int start = 0;
 int side = 0;
-long max_speed = 1580;
-//long max_speed = 1800000;
-int max_acceleration = 14800;
-//int max_acceleration = 8000;
-int starting_rotation = 100;
-//int starting_rotation = 100;
-
-//int stepover = 80;
-int stepover = 60;
-// 7000 AND 120 WORKS
+int max_speed = 6000;
+int max_acceleration = 12000;
+int starting_rotation = 200;
+int stepover = 340;
 int ledPinR = 7;
 int ledPinL = 6;
-int step_distance = 400;
+int step_distance = 800;
 
 void setup()
 {
@@ -29,6 +23,7 @@ void setup()
   pinMode(ledPinR, OUTPUT);
   pinMode(ledPinL, OUTPUT);
 }
+
 void loop()
 {
   
